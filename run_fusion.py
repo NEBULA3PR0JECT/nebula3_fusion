@@ -3,7 +3,6 @@ from database.arangodb import DBBase
 import cv2
 from pathlib import Path
 import csv
-import requests
 
 import tqdm
 from PIL import Image
@@ -11,10 +10,14 @@ import time
 import random
 import os, sys
 
+from utils.image_utils import bb_intersection_over_union, bb_intersection, \
+                                        plot_one_box, save_img_with_bboxes
+
 # from visual_clues.bboxes_implementation import DetectronBBInitter
 
 URL_PREFIX = "http://74.82.29.209:9000"
 CUR_FOLDER = os.path.dirname(os.path.abspath(__file__))
+INTERSECTION_THRESHOLD = 0.97
 
 class FusionPipeline:
     def __init__(self):
@@ -23,14 +26,14 @@ class FusionPipeline:
         self.collection_name = "s4_fusion"
 
 
-    def insert_json_to_db(self, combined_json, collection_name):
+    def insert_json_to_db(self, json_obj, collection_name):
         """
         Inserts a JSON with global & local tokens to the database.
         """
 
-        res = self.nre.write_doc_by_key(combined_json, collection_name, overwrite=True, key_list=['movie_id', 'frame_num'])
+        res = self.nre.write_doc_by_key(json_obj, collection_name, overwrite=True, key_list=['movie_id'])
 
-        print("Successfully inserted to database. Collection name: {}, movie_id: {}".format(collection_name, combined_json['movie_id']))
+        print("Successfully inserted to database. Collection name: {}, movie_id: {}".format(collection_name, json_obj['movie_id']))
         return res
 
     def get_mdf_urls_from_db(self, movie_id, collection):
@@ -96,6 +99,7 @@ class FusionPipeline:
         except KeyError:
             print("Movie ID {} and Fra not found.".format(movie_id))
         return data
+
     
     def get_visual_clues_rois(self, visual_clue_data):
         """
@@ -108,24 +112,6 @@ class FusionPipeline:
                 vc_rois.append(vc_roi)
         return vc_rois
     
-    def plot_one_box(self, x, img, color=None, label=None, line_thickness=3):
-        # Plots one bounding box on image img
-        tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
-        color = color or [random.randint(0, 255) for _ in range(3)]
-        c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
-        cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
-
-    def save_img_with_bboxes(self, reid_bbox, vc_bbox, image_url, frame_num):
-        
-        resp = requests.get(image_url, stream=True).raw
-        image = np.asarray(bytearray(resp.read()), dtype="uint8")
-        img_orig = cv2.imdecode(image, cv2.IMREAD_COLOR)
-        self.plot_one_box(reid_bbox, img_orig, label=None, color=None, line_thickness=3)
-        self.plot_one_box(vc_bbox, img_orig, label=None, color=None, line_thickness=3)
-        # TO DELETE - SANITY TEXT OF BBOXES ON IMAGE
-        cv2.imwrite(os.path.join(CUR_FOLDER, "images/frame_{}.jpg".format(frame_num)), img_orig)
-        print(f"The image is saved with bboxes")
-        return
     
     def get_image_url(self, movie_id, frame_num, collection):
         try:
@@ -135,17 +121,21 @@ class FusionPipeline:
         return data['url']
 
 
-    def calculate_iou(self, reid_bbox, vc_bbox, movie_id, frame_num):
+    def calculate_intersection(self, reid_bbox, vc_bbox, movie_id, frame_num):
         """
         Calculate IOU between REID bbox and Visual Clues bbox.
         """
         save_image = True
-        if save_image:
-            image_url = self.get_image_url(movie_id, frame_num=frame_num, collection="s4_visual_clues")
-            self.save_img_with_bboxes(reid_bbox=reid_bbox, vc_bbox=vc_bbox, image_url=image_url, frame_num=frame_num)
-        # Calculate IOU
         
-        return
+        # Calculate Intersection
+        intersection = bb_intersection(reid_bbox, vc_bbox)
+        print("Intersection: {}".format(intersection))
+
+        if intersection > INTERSECTION_THRESHOLD:
+            if save_image:
+                image_url = self.get_image_url(movie_id, frame_num=frame_num, collection="s4_visual_clues")
+                save_img_with_bboxes(reid_bbox=reid_bbox, vc_bbox=vc_bbox, image_url=image_url, frame_num=frame_num)
+        return intersection
         
 
     
@@ -159,8 +149,19 @@ def main():
     reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
     collection = "s4_visual_clues"
     
+    fusion_output = {
+        'movie_id': movie_id,
+        'frames': []
+    }
+
     # Iterate over all the RE-ID frames.
     for reid_detection in reid_detections:
+
+        # Mapping between RE-ID details (bbox, frame_num, intersection confidence) and VC bboxes
+        reid_intersections = {}
+        # Mapping between RE-ID bboxes to VC bboxes to save which ones have high intersection
+        map_reid_bbox_to_vc_bbox = {}
+
         reid_frame = reid_detection['frame_num']
         vc_data = fusion_pipeline.get_visual_clues_data(movie_id = movie_id, collection=collection, frame_num=reid_frame)
         vc_rois = fusion_pipeline.get_visual_clues_rois(visual_clue_data=vc_data)
@@ -174,7 +175,39 @@ def main():
                 vc_bbox = vc_roi['bbox']
                 vc_bbox = vc_bbox.replace("[","").replace("]","").split(",")
                 vc_bbox = [float(xy) for xy in vc_bbox]
-                fusion_pipeline.calculate_iou(reid_bbox=reid_bbox, vc_bbox=vc_bbox, movie_id=movie_id, frame_num=reid_frame)
+                bboxes_intersection = fusion_pipeline.calculate_intersection \
+                                        (reid_bbox=reid_bbox, vc_bbox=vc_bbox, movie_id=movie_id, frame_num=reid_frame)
+                
+                # Keep the bounding boxes that have high intersection
+                if bboxes_intersection > INTERSECTION_THRESHOLD:
+                    if str(vc_bbox) not in map_reid_bbox_to_vc_bbox:
+                        map_reid_bbox_to_vc_bbox[str(vc_bbox)] = ''
+                        reid_intersections[str(reid_bbox)] = [{
+                                                        'vc_bbox': vc_bbox,
+                                                        'bbox_intersection': bboxes_intersection,
+                                                        'reid_frame': reid_frame
+                                                        }]
+                    else:
+                        print("Detected another face for the same person bbox.")
+                        reid_intersections[str(reid_bbox)].append({
+                                                        'vc_bbox': vc_bbox,
+                                                        'bbox_intersection': bboxes_intersection,
+                                                        'reid_frame': reid_frame
+                                                        })
+                    # Save the information of strong candidates regrding bboxes intersection
+                    fusion_output['frames'].append({
+                                            'frame_num': reid_frame,
+                                            'reid_bbox': reid_bbox,
+                                            'vc_bbox': vc_bbox,
+                                            'bbox_intersection': bboxes_intersection,
+                                        })
+        # Check BBox Intersection Edge cases in the current frame
+          
+        print(reid_intersections)
+        debug_p = 0
+    print(fusion_output)
+    fusion_pipeline.insert_json_to_db(fusion_output, fusion_pipeline.collection_name)
+    a=0
 
 
 
