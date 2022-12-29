@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import random
 import os
+import PIL.ImageColor as ImageColor
 CUR_FOLDER = os.path.abspath(__file__ + "/../../")
 
 def bb_intersection_over_union(boxA, boxB):
@@ -63,15 +64,25 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     color = color or [random.randint(0, 255) for _ in range(3)]
     c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
     cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
+    cv2.putText(img, str(label), (c2[0], c2[1]), 0, tl / 3, [225, 255, 255], thickness=max(tl - 1, 1), lineType=cv2.LINE_AA)
 
-def save_img_with_bboxes(reid_bbox, vc_bbox, image_url, frame_num):
+def save_img_with_bboxes(bbox_details, image_url, frame_num, movie_id):
     
     resp = requests.get(image_url, stream=True).raw
     image = np.asarray(bytearray(resp.read()), dtype="uint8")
     img_orig = cv2.imdecode(image, cv2.IMREAD_COLOR)
-    plot_one_box(reid_bbox, img_orig, label=None, color=None, line_thickness=3)
-    plot_one_box(vc_bbox, img_orig, label=None, color=None, line_thickness=3)
+    color_space = [ImageColor.getrgb(n) for n, c in ImageColor.colormap.items()][7:]
+    for cur_details in bbox_details:
+        reid_bbox = cur_details[0]
+        vc_bbox = cur_details[1]
+        face_id = cur_details[2]
+        color = [random.randint(0, 255) for _ in range(3)]
+        plot_one_box(reid_bbox, img_orig, label=face_id, color=color, line_thickness=3)
+        plot_one_box(vc_bbox, img_orig, label=face_id, color=color, line_thickness=3)
     # TO DELETE - SANITY TEXT OF BBOXES ON IMAGE
-    cv2.imwrite(os.path.join(CUR_FOLDER, "images/frame_{}.jpg".format(frame_num)), img_orig)
+    movie_id_path =  os.path.join(CUR_FOLDER, "images/{}".format(movie_id))
+    if not os.path.exists(movie_id_path):
+        os.makedirs(movie_id_path)
+    cv2.imwrite(os.path.join(movie_id_path, "frame_{}.jpg".format(frame_num)), img_orig)
     print(f"The image is saved with bboxes")
     return
