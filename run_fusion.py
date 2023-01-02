@@ -11,7 +11,7 @@ import random
 import os, sys
 
 from utils.image_utils import bb_intersection_over_union, bb_intersection, \
-                                        plot_one_box, save_img_with_bboxes
+                                bb_smallest_area, plot_one_box, save_img_with_bboxes
 
 # from visual_clues.bboxes_implementation import DetectronBBInitter
 
@@ -155,25 +155,42 @@ class FusionPipeline:
         for match in matches:
             cur_reid_bbox = str(match['reid_bbox'])
             cur_vc_bbox = str(match['vc_bbox'])
-            cur_bboxes_intersection = match['bbox_intersection']
+            cur_face_area = match['face_area']
             
             # We detected that the person bbox has already been found.
             if cur_vc_bbox in detected_person_bboxes:
-                # Get the previous face intersection
-                prev_bboxes_intersection = detected_person_bboxes[cur_vc_bbox]
+                # Get the previous face area
+                prev_bboxes_area = detected_person_bboxes[cur_vc_bbox]
                 
-                # Update with the higest intersection (which is the closest face and our hueristic)
+                temp_corrected_matches = corrected_matches.copy()
+                # Update with the higest area (which is the closest face and our hueristic)
                 # Then proceed to delete the previous intersection from the matches
-                if cur_bboxes_intersection >= prev_bboxes_intersection:
-                    detected_person_bboxes.update({cur_vc_bbox: cur_bboxes_intersection})
+                if cur_face_area > prev_bboxes_area:
+                    detected_person_bboxes.update({cur_vc_bbox: cur_face_area})
 
-                    for idx, correct_match in corrected_matches.copy():
-                        if correct_match['bbox_intersection'] == prev_bboxes_intersection:
-                            del corrected_matches[idx]
+                    for idx, correct_match in temp_corrected_matches:
+                        if correct_match['face_area'] == prev_bboxes_area:
+                            del temp_corrected_matches[idx]
+                            corrected_matches = temp_corrected_matches
+                
+                # Delete the current face area which is smaller than the highest face area
+                else:
+                    for jdx, correct_match in enumerate(temp_corrected_matches):
+                        # The "str(correct_match['vc_bbox']) == cur_vc_bbox" is important because we want to make sure
+                        # That we delete the face is associated to the same person bbox
+                        # Because the same face can be inside multiple person bboxes with same face area
+                        # If two people are close to one another their bboxes can be big enough to contain the same face
+                        # So we have to make sure the person bbox is the one that we already detected
+                        if correct_match['face_area'] == cur_face_area and \
+                                str(correct_match['vc_bbox']) == cur_vc_bbox: 
+                                
+                            del temp_corrected_matches[jdx]
+                            corrected_matches = temp_corrected_matches
+
             
             # Add the detections.
             if cur_vc_bbox not in detected_person_bboxes:
-                detected_person_bboxes.update({cur_vc_bbox: cur_bboxes_intersection})
+                detected_person_bboxes.update({cur_vc_bbox: cur_face_area})
 
                 
         
@@ -188,14 +205,15 @@ class FusionPipeline:
 def main():
     
     fusion_pipeline = FusionPipeline()
-    # movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
-    #             "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
-    #             "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
-    #             "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
+    movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
+                "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
+                "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
+                "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
 
-    movie_ids = ["Movies/7023181708619934815"]
+    # movie_ids = ["Movies/-7609741451718247625"]
 
     for movie_id in movie_ids:
+        print("Working on Movie ID: {}".format(movie_id))
         collection = "s4_re_id"
         reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
         collection = "s4_visual_clues"
@@ -251,11 +269,13 @@ def main():
                         if reid_frame_str not in fusion_output['frame_numbers']:
                             fusion_output['frame_numbers'][reid_frame_str] = {'intersections' : []}
                         
+                        face_area = bb_smallest_area(reid_bbox, vc_bbox)
                         fusion_output['frame_numbers'][reid_frame_str]['intersections'].append(
                             {
                                 'reid_bbox': reid_bbox,
                                 'vc_bbox': vc_bbox,
                                 'bbox_intersection': bboxes_intersection,
+                                'face_area': face_area,
                                 'face_id': face_id
                             }
                         )
@@ -263,7 +283,7 @@ def main():
             # Check BBox Intersection Edge cases in the current frame
             
             # print(reid_intersections)
-        print(fusion_output)
+        # print(fusion_output)
         # fusion_pipeline.insert_json_to_db(fusion_output, fusion_pipeline.collection_name)
 
         save_image = True
@@ -271,14 +291,20 @@ def main():
             movie_id = fusion_output['movie_id']
             frames = fusion_output['frame_numbers']
             for frame_num, _ in frames.items():
+                
+                image_url = fusion_pipeline.get_image_url(movie_id, frame_num=int(frame_num), collection="s4_visual_clues")
+                movie_name = image_url.split("/")[-2]
+                print("Working on movie: {}, frame: {}".format(movie_name, frame_num))
+
                 matches = []
                 # Get all the matches for the current frame
                 for intersection in frames[str(frame_num)]['intersections']:
                     matches.append({
-                                    'reid_bbox': intersection['reid_bbox'],
-                                    'vc_bbox':   intersection['vc_bbox'],
-                                    'bbox_intersection': intersection['bbox_intersection'],
-                                    'face_id':   intersection['face_id']
+                                    'reid_bbox':            intersection['reid_bbox'],
+                                    'vc_bbox':              intersection['vc_bbox'],
+                                    'bbox_intersection':    intersection['bbox_intersection'],
+                                    'face_area':            intersection['face_area'],
+                                    'face_id':              intersection['face_id']
                                 })
                 
                 post_processed_matches = fusion_pipeline.correct_matches(matches)
@@ -286,9 +312,7 @@ def main():
                 # Draw all the matches on the current frame
                 if post_processed_matches:
                     
-                    image_url = fusion_pipeline.get_image_url(movie_id, frame_num=int(frame_num), collection="s4_visual_clues")
-                    movie_name = image_url.split("/")[-2]
-                    save_img_with_bboxes(bbox_details=matches, image_url=image_url, \
+                    save_img_with_bboxes(bbox_details=post_processed_matches, image_url=image_url, \
                                     frame_num=frame_num, movie_name=movie_name)
 
 
