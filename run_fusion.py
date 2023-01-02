@@ -131,6 +131,55 @@ class FusionPipeline:
         print("Intersection: {}".format(intersection))
 
         return intersection
+
+    
+    def correct_matches(self, matches):
+        """
+        Correcting the edge cases of matches between face bbox and its corresponding person bbox
+        CASES:
+            Two people cases: (They are near each other in the image)
+                1. Detected Two face bbox, and One person bboxes.
+                2. Detected One face bbox, and two person bboxes.
+                3. Detected Two face bboxes, and two person bboxes.
+                    - One face bbox intersects with both bboxes, Other face bbox intersects with one bbox.
+                    - One face bbox intersects with both bboxes but partially in one of them, Other face bbox intersects with one bbox.
+                    - Both faces bboxes intersects with both bboxes.
+        """
+
+        # CASE 1: Two (or more) faces intersect with one person bbox
+        
+        detected_person_bboxes = {}
+
+        corrected_matches = matches.copy()
+
+        for match in matches:
+            cur_reid_bbox = str(match['reid_bbox'])
+            cur_vc_bbox = str(match['vc_bbox'])
+            cur_bboxes_intersection = match['bbox_intersection']
+            
+            # We detected that the person bbox has already been found.
+            if cur_vc_bbox in detected_person_bboxes:
+                # Get the previous face intersection
+                prev_bboxes_intersection = detected_person_bboxes[cur_vc_bbox]
+                
+                # Update with the higest intersection (which is the closest face and our hueristic)
+                # Then proceed to delete the previous intersection from the matches
+                if cur_bboxes_intersection >= prev_bboxes_intersection:
+                    detected_person_bboxes.update({cur_vc_bbox: cur_bboxes_intersection})
+
+                    for idx, correct_match in corrected_matches.copy():
+                        if correct_match['bbox_intersection'] == prev_bboxes_intersection:
+                            del corrected_matches[idx]
+            
+            # Add the detections.
+            if cur_vc_bbox not in detected_person_bboxes:
+                detected_person_bboxes.update({cur_vc_bbox: cur_bboxes_intersection})
+
+                
+        
+        return corrected_matches
+
+        
         
 
     
@@ -139,7 +188,13 @@ class FusionPipeline:
 def main():
     
     fusion_pipeline = FusionPipeline()
+    # movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
+    #             "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
+    #             "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
+    #             "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
+
     movie_ids = ["Movies/7023181708619934815"]
+
     for movie_id in movie_ids:
         collection = "s4_re_id"
         reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
@@ -219,16 +274,22 @@ def main():
                 matches = []
                 # Get all the matches for the current frame
                 for intersection in frames[str(frame_num)]['intersections']:
-                    matches.append([intersection['reid_bbox'], intersection['vc_bbox'], intersection['face_id']])
+                    matches.append({
+                                    'reid_bbox': intersection['reid_bbox'],
+                                    'vc_bbox':   intersection['vc_bbox'],
+                                    'bbox_intersection': intersection['bbox_intersection'],
+                                    'face_id':   intersection['face_id']
+                                })
+                
+                post_processed_matches = fusion_pipeline.correct_matches(matches)
                 
                 # Draw all the matches on the current frame
-                if matches:
+                if post_processed_matches:
                     
                     image_url = fusion_pipeline.get_image_url(movie_id, frame_num=int(frame_num), collection="s4_visual_clues")
+                    movie_name = image_url.split("/")[-2]
                     save_img_with_bboxes(bbox_details=matches, image_url=image_url, \
-                                    frame_num=frame_num, movie_id=movie_id)
-
-
+                                    frame_num=frame_num, movie_name=movie_name)
 
 
 
