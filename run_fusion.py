@@ -9,9 +9,11 @@ from PIL import Image
 import time
 import random
 import os, sys
-
+import ast
 from utils.image_utils import bb_intersection_over_union, bb_intersection, \
-                                bb_smallest_area, plot_one_box, save_img_with_bboxes
+                                bb_smallest_area, plot_one_box, save_img_with_bboxes, \
+                                    bb_hueristic_face_coordinate, bb_center_coordinate, \
+                                        distance_between_two_points
 
 # from visual_clues.bboxes_implementation import DetectronBBInitter
 
@@ -148,7 +150,10 @@ class FusionPipeline:
 
         # CASE 1: Two (or more) faces intersect with one person bbox
         
+        
         detected_person_bboxes = {}
+
+        detected_reid_bboxes = {}
 
         corrected_matches = matches.copy()
 
@@ -160,20 +165,21 @@ class FusionPipeline:
             # We detected that the person bbox has already been found.
             if cur_vc_bbox in detected_person_bboxes:
                 # Get the previous face area
-                prev_bboxes_area = detected_person_bboxes[cur_vc_bbox]
+                prev_face_area = detected_person_bboxes[cur_vc_bbox]
                 
                 temp_corrected_matches = corrected_matches.copy()
                 # Update with the higest area (which is the closest face and our hueristic)
                 # Then proceed to delete the previous intersection from the matches
-                if cur_face_area > prev_bboxes_area:
+                if cur_face_area > prev_face_area:
                     detected_person_bboxes.update({cur_vc_bbox: cur_face_area})
 
-                    for idx, correct_match in temp_corrected_matches:
-                        if correct_match['face_area'] == prev_bboxes_area:
+                    for idx, correct_match in enumerate(temp_corrected_matches):
+                        if correct_match['face_area'] == prev_face_area:
                             del temp_corrected_matches[idx]
                             corrected_matches = temp_corrected_matches
                 
-                # Delete the current face area which is smaller than the highest face area
+                # Delete the current face area which is smaller/equal than the highest face area
+                # It's equal when a face is fully intersected with two different person bounding boxes.
                 else:
                     for jdx, correct_match in enumerate(temp_corrected_matches):
                         # The "str(correct_match['vc_bbox']) == cur_vc_bbox" is important because we want to make sure
@@ -192,7 +198,45 @@ class FusionPipeline:
             if cur_vc_bbox not in detected_person_bboxes:
                 detected_person_bboxes.update({cur_vc_bbox: cur_face_area})
 
+            
+            temp_corrected_matches = corrected_matches.copy()
+            # We detected that the face bbox has already been found.
+            if cur_reid_bbox in detected_reid_bboxes:
+                # Calculate the huristic face ('upper half of bbox') center coordinate of
+                # prev face & person bbox and current ones
+                prev_vc_bbox = ast.literal_eval(detected_reid_bboxes[cur_reid_bbox])
+                cur_reid_bbox = ast.literal_eval(cur_reid_bbox)
+                prev_upper_cen_coord = bb_hueristic_face_coordinate(prev_vc_bbox)
+                cur_vc_bbox = ast.literal_eval(cur_vc_bbox)
+                curr_upper_cen_coord = bb_hueristic_face_coordinate(cur_vc_bbox)
+
+                # Check which person bbox is hueristically better matched to the current face bbox
+                # By checking the euclidian distance between the center face and upper center person bboxes.
+                face_center_coord = bb_center_coordinate(cur_reid_bbox)
+
+                prev_vc_bbox_distance = distance_between_two_points(prev_upper_cen_coord, face_center_coord)
+                curr_vc_bbox_distance = distance_between_two_points(curr_upper_cen_coord, face_center_coord)
+
+                if prev_vc_bbox_distance > curr_vc_bbox_distance:
+                    for idx, correct_match in enumerate(temp_corrected_matches):
+                        # We saved the person bbox in `detected_reid_bboxes[cur_reid_bbox]`
+                        # Thats how we can uniquely idenify the person bbox which is further away
+                        # from the current person bbox.
+                        if correct_match['vc_bbox'] == detected_reid_bboxes[str(cur_reid_bbox)]:
+                            del temp_corrected_matches[idx]
+                            corrected_matches = temp_corrected_matches
+                else:
+                    # Delete the current face & person bbox
+                    for idx, correct_match in enumerate(temp_corrected_matches):
+                        if correct_match['vc_bbox'] == cur_vc_bbox and \
+                            correct_match['reid_bbox'] == cur_reid_bbox:
+                            del temp_corrected_matches[idx]
+                            corrected_matches = temp_corrected_matches
                 
+            # Add the face detections with their current person bbox for future
+            # calculations such as finding the center coordinate
+            if str(cur_reid_bbox) not in detected_reid_bboxes:
+                detected_reid_bboxes.update({cur_reid_bbox: cur_vc_bbox})
         
         return corrected_matches
 
@@ -210,7 +254,7 @@ def main():
                 "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
                 "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
 
-    # movie_ids = ["Movies/-7609741451718247625"]
+    # movie_ids = ["Movies/-6432245914174803073"]
 
     for movie_id in movie_ids:
         print("Working on Movie ID: {}".format(movie_id))

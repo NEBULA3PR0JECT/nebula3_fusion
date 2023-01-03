@@ -4,6 +4,8 @@ import cv2
 import random
 import os
 import PIL.ImageColor as ImageColor
+import math
+
 CUR_FOLDER = os.path.abspath(__file__ + "/../../")
 
 def bb_intersection_over_union(boxA, boxB):
@@ -63,17 +65,37 @@ def bb_smallest_area(boxA, boxB):
 
     return smallBboxArea
 
-def bb_center_coordinate(boxA, boxB):
+def bb_center_coordinate(boxA):
     # determine the (x, y)-coordinates of the intersection rectangle
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[2], boxB[2])
-    yB = min(boxA[3], boxB[3])
+    xA = boxA[0]
+    yA = boxA[1]
+    xB = boxA[2]
+    yB = boxA[3]
     
     cX = (xA + xB) / 2
     cY = (yA + yB) / 2
 
     return (cX, cY)
+
+def bb_hueristic_face_coordinate(boxA):
+    """
+    Returns the coordinate which is hueristically represents the place of face center coordinate
+    """
+    # determine the (x, y)-coordinates of the intersection rectangle
+    xA = boxA[0]
+    yA = boxA[1]
+    xB = boxA[2]
+    yB = boxA[3]
+    
+    cX = (xA + xB) / 2
+    cY = (yA + yB) / 4
+
+    return (cX, cY)
+
+def distance_between_two_points(pointA, pointB):
+
+    dist = math.sqrt( (pointB[0] - pointA[0])**2 + (pointB[1] - pointA[1])**2 )
+    return dist
 
 def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     # Plots one bounding box on image img
@@ -103,3 +125,5 @@ def save_img_with_bboxes(bbox_details, image_url, frame_num, movie_name):
     cv2.imwrite(os.path.join(movie_name_path, "frame_{}.jpg".format(frame_num)), img_orig)
     print(f"The image is saved with bboxes")
     return
+
+distance_between_two_points((0,0), (1,1))
