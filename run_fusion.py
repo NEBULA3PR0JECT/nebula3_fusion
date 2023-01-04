@@ -92,6 +92,8 @@ class FusionPipeline:
             data = self.nre.get_doc_by_key({'movie_id': movie_id}, collection)
         except KeyError:
             print("Movie ID {} not found.".format(movie_id))
+        if not data:
+            return None
         reid_detections = data['frames'] if 'frames' in data else []
         return reid_detections
     
@@ -99,7 +101,7 @@ class FusionPipeline:
         try:
             data = self.nre.get_doc_by_key({'movie_id': movie_id, 'frame_num': frame_num}, collection)
         except KeyError:
-            print("Movie ID {} and Fra not found.".format(movie_id))
+            print("Movie ID {} and Frame not found.".format(movie_id))
         return data
 
     
@@ -119,8 +121,23 @@ class FusionPipeline:
         try:
             data = self.nre.get_doc_by_key({'movie_id': movie_id, 'frame_num': frame_num}, collection)
         except KeyError:
-            print("Movie ID {} and Fra not found.".format(movie_id))
+            print("Movie ID {} and Frame num {} not found.".format(movie_id, frame_num))
         return data['url']
+    
+    def get_movie_ids_by_tag(self, tag, collection):
+
+        results = []
+        query = 'FOR doc IN {} RETURN doc'.format(collection)
+        cursor = self.nre.db.aql.execute(query)
+        for doc in cursor:
+            results.append(doc)
+        temp_results = []
+        for result in results:
+            if result['movies']:
+                if 'benchmark' in result['inputs']['videoprocessing']:
+                    if result['inputs']['videoprocessing']['benchmark']['benchmark_tag'] == 'v100':
+                        temp_results.append(list(result['movies'].keys())[0])
+        return temp_results
 
 
     def calculate_intersection(self, reid_bbox, vc_bbox, movie_id, frame_num):
@@ -133,6 +150,13 @@ class FusionPipeline:
         print("Intersection: {}".format(intersection))
 
         return intersection
+    
+    def calc_iou_on_matches(self, matches):
+        """
+        Calclate IOU on all matches
+        """
+        return matches
+
 
     
     def correct_matches(self, matches):
@@ -147,13 +171,8 @@ class FusionPipeline:
                     - One face bbox intersects with both bboxes but partially in one of them, Other face bbox intersects with one bbox.
                     - Both faces bboxes intersects with both bboxes.
         """
-
-        # CASE 1: Two (or more) faces intersect with one person bbox
         
-        
-        detected_person_bboxes = {}
-
-        detected_reid_bboxes = {}
+        detected_person_bboxes, detected_reid_bboxes = {}, {}
 
         corrected_matches = matches.copy()
 
@@ -222,7 +241,7 @@ class FusionPipeline:
                         # We saved the person bbox in `detected_reid_bboxes[cur_reid_bbox]`
                         # Thats how we can uniquely idenify the person bbox which is further away
                         # from the current person bbox.
-                        if correct_match['vc_bbox'] == detected_reid_bboxes[str(cur_reid_bbox)]:
+                        if str(correct_match['vc_bbox']) == detected_reid_bboxes[str(cur_reid_bbox)]:
                             del temp_corrected_matches[idx]
                             corrected_matches = temp_corrected_matches
                 else:
@@ -238,6 +257,7 @@ class FusionPipeline:
             if str(cur_reid_bbox) not in detected_reid_bboxes:
                 detected_reid_bboxes.update({cur_reid_bbox: cur_vc_bbox})
         
+
         return corrected_matches
 
         
@@ -249,17 +269,33 @@ class FusionPipeline:
 def main():
     
     fusion_pipeline = FusionPipeline()
-    movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
-                "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
-                "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
-                "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
+    tag='v100'
+    collection='pipelines'
+    # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag, collection)
+
+    # movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
+    #             "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
+    #             "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
+    #             "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
 
     # movie_ids = ["Movies/-6432245914174803073"]
 
+    # Trailers:
+    movie_ids = ["Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
+                "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
+                "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
+
+    # movie_ids = ["Movies/5421091196518235613"]
+
+    skipped_movie_ids = []
     for movie_id in movie_ids:
         print("Working on Movie ID: {}".format(movie_id))
         collection = "s4_re_id"
         reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
+        if not reid_detections:
+            print("Skipping Movie ID: {}, Because REID detections were not found".format(movie_id))
+            skipped_movie_ids.append(movie_id)
+            continue
         collection = "s4_visual_clues"
         
         fusion_output = {
@@ -277,8 +313,16 @@ def main():
 
             reid_frame = reid_detection['frame_num']
             vc_data = fusion_pipeline.get_visual_clues_data(movie_id = movie_id, collection=collection, frame_num=reid_frame)
+            if not vc_data:
+                 print("Skipping Movie ID: {}, Because vc_data was not found".format(movie_id))
+                 skipped_movie_ids.append(movie_id)
+                 continue
             vc_rois = fusion_pipeline.get_visual_clues_rois(visual_clue_data=vc_data)
-            
+            if not vc_rois:
+                print("Skipping Movie ID: {}, Because vc_rois was not found".format(movie_id))
+                skipped_movie_ids.append(movie_id)
+                continue
+                
             reid_bboxes = reid_detection['re-id']
             # Iterate over the RE-ID face(s) in the current frame (There may be multiple different Face IDs)
             for reid_bbox_obj in reid_bboxes:
@@ -358,7 +402,7 @@ def main():
                     
                     save_img_with_bboxes(bbox_details=post_processed_matches, image_url=image_url, \
                                     frame_num=frame_num, movie_name=movie_name)
-
+    print("Skipped movie ids: {}".format(skipped_movie_ids))
 
 
 if __name__ == '__main__':
