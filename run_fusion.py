@@ -294,6 +294,14 @@ class FusionPipeline:
 def main():
     
     fusion_pipeline = FusionPipeline()
+    tag='v100'
+    collection='pipelines'
+    # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag, collection)
+
+    # movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
+    #             "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
+    #             "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
+    #             "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
 
     # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag='v100', collection='pipelines')
 
@@ -306,6 +314,13 @@ def main():
     face_ids = set()
     # List of person without faces attached to them (Only Visual Clues)
     vc_ids = set()
+
+    # Trailers:
+    movie_ids = ["Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
+                "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
+                "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
+
+    # movie_ids = ["Movies/5421091196518235613"]
 
     skipped_movie_ids = []
     for movie_id in movie_ids:
