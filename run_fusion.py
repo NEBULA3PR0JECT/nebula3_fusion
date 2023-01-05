@@ -96,6 +96,19 @@ class FusionPipeline:
             return None
         reid_detections = data['frames'] if 'frames' in data else []
         return reid_detections
+
+    def get_reid_face_ids(self, movie_id, frame_num, collection):
+        """
+        Get the bboxes that have 'person' detected in them.
+        """
+        reid_data = self.get_reid_detections(movie_id, collection)
+        face_ids = set()
+        for reid_det in reid_data:
+            if str(reid_det['frame_num']) == str(frame_num):
+                reid_bboxes = reid_det['re-id']
+                for reid_bbox in reid_bboxes:
+                    face_ids.add(str(reid_bbox['id']))
+        return face_ids
     
     def get_visual_clues_data(self, movie_id, collection, frame_num):
         try:
@@ -115,6 +128,18 @@ class FusionPipeline:
             if 'person' in vc_roi['bbox_object']:
                 vc_rois.append(vc_roi)
         return vc_rois
+    
+    def get_visual_clues_person_ids(self, movie_id, frame_num, collection):
+        """
+        Get the bboxes that have 'person' detected in them.
+        """
+        visual_clue_data = self.get_visual_clues_data(movie_id, collection, frame_num)
+        vc_ids = set()
+        vc_ids_data = visual_clue_data['roi']
+        for vc_roi in vc_ids_data:
+            if 'person' in vc_roi['bbox_object']:
+                vc_ids.add(vc_roi['roi_id'])
+        return vc_ids
     
     
     def get_image_url(self, movie_id, frame_num, collection):
@@ -269,23 +294,18 @@ class FusionPipeline:
 def main():
     
     fusion_pipeline = FusionPipeline()
-    tag='v100'
-    collection='pipelines'
-    # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag, collection)
 
-    # movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
-    #             "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
-    #             "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
-    #             "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
-
-    # movie_ids = ["Movies/-6432245914174803073"]
+    # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag='v100', collection='pipelines')
 
     # Trailers:
     movie_ids = ["Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
                 "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
                 "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
 
-    # movie_ids = ["Movies/5421091196518235613"]
+    # List of faces without person bboxes attached to them (Only REID)
+    face_ids = set()
+    # List of person without faces attached to them (Only Visual Clues)
+    vc_ids = set()
 
     skipped_movie_ids = []
     for movie_id in movie_ids:
@@ -305,7 +325,7 @@ def main():
 
         # Iterate over all the RE-ID frames.
         for reid_detection in reid_detections:
-
+            
             # Mapping between RE-ID details (bbox, frame_num, intersection confidence) and VC bboxes
             reid_intersections = {}
             # Mapping between RE-ID bboxes to VC bboxes to save which ones have high intersection
@@ -328,6 +348,7 @@ def main():
             for reid_bbox_obj in reid_bboxes:
                 face_id = reid_bbox_obj['id']
                 reid_bbox = reid_bbox_obj['bbox']
+
                 # Iterate over Visual Clues bboxes for the specific face. (that have 'person' in them)
                 for vc_roi in vc_rois:
                     vc_bbox = vc_roi['bbox']
@@ -338,38 +359,33 @@ def main():
                     
                     # Keep the bounding boxes that have high intersection
                     if bboxes_intersection > INTERSECTION_THRESHOLD:
-                        # if str(vc_bbox) not in map_reid_bbox_to_vc_bbox:
-                        #     map_reid_bbox_to_vc_bbox[str(vc_bbox)] = ''
-                        #     reid_intersections[str(reid_bbox)] = [{
-                        #                                     'vc_bbox': vc_bbox,
-                        #                                     'bbox_intersection': bboxes_intersection,
-                        #                                     'reid_frame': reid_frame
-                        #                                     }]
-                        # else:
-                        #     print("Detected another face for the same person bbox.")
-                        #     reid_intersections[str(reid_bbox)].append({
-                        #                                     'vc_bbox': vc_bbox,
-                        #                                     'bbox_intersection': bboxes_intersection,
-                        #                                     'reid_frame': reid_frame
-                        #                                     })
                         # Save the information of strong candidates regrding bboxes intersection
                         reid_frame_str = str(reid_frame)
                         if reid_frame_str not in fusion_output['frame_numbers']:
-                            fusion_output['frame_numbers'][reid_frame_str] = {'intersections' : []}
+                            fusion_output['frame_numbers'][reid_frame_str] = {'intersections' : [], 'ious': []}
                         
                         face_area = bb_smallest_area(reid_bbox, vc_bbox)
+                        iou = bb_intersection_over_union(reid_bbox, vc_bbox)
                         fusion_output['frame_numbers'][reid_frame_str]['intersections'].append(
                             {
                                 'reid_bbox': reid_bbox,
                                 'vc_bbox': vc_bbox,
                                 'bbox_intersection': bboxes_intersection,
                                 'face_area': face_area,
-                                'face_id': face_id
+                                'face_id': str(face_id),
+                                'iou': iou,
+                                'vc_id': str(vc_roi['roi_id'])
                             }
                         )
-                            
-            # Check BBox Intersection Edge cases in the current frame
-            
+                        if bboxes_intersection == 1.0:
+                            fusion_output['frame_numbers'][reid_frame_str]['ious'].append(
+                                {
+                                    'iou': bboxes_intersection,
+                                    'face_id': str(face_id),
+                                    'vc_id': str(vc_roi['roi_id'])
+                                }
+                            )
+                        
             # print(reid_intersections)
         # print(fusion_output)
         # fusion_pipeline.insert_json_to_db(fusion_output, fusion_pipeline.collection_name)
@@ -392,12 +408,34 @@ def main():
                                     'vc_bbox':              intersection['vc_bbox'],
                                     'bbox_intersection':    intersection['bbox_intersection'],
                                     'face_area':            intersection['face_area'],
-                                    'face_id':              intersection['face_id']
+                                    'face_id':              intersection['face_id'],
+                                    'vc_id':                intersection['vc_id']
                                 })
                 
                 post_processed_matches = fusion_pipeline.correct_matches(matches)
-                
+
+                vc_ids = fusion_pipeline.get_visual_clues_person_ids(movie_id, int(frame_num), collection="s4_visual_clues")
+                face_ids = fusion_pipeline.get_reid_face_ids(movie_id, frame_num, collection="s4_re_id")
+                for idx, post_processed_match in enumerate(post_processed_matches):
+                        face_id = str(post_processed_match['face_id'])
+                        vc_id = str(post_processed_match['vc_id'])
+
+                        if face_id in face_ids:
+                            face_ids.remove(face_id)
+                        if vc_id in vc_ids:
+                            vc_ids.remove(vc_id)
+                        
+
+                for iou_data in frames[str(frame_num)]['ious']:
+                    print("-------- IOUs Frame Number: {} -------".format(str(frame_num)))
+                    print("VC_ID: {}".format(iou_data['vc_id']))
+                    print("FACE_ID: {}".format(iou_data['face_id']))
+                    print("IOU: {}".format(iou_data['iou']))
+                    print("-"*20)
                 # Draw all the matches on the current frame
+
+                #faces_no_person.append({'roi_id': vc_roi['roi_id']})
+                #person_no_faces.append(v)
                 if post_processed_matches:
                     
                     save_img_with_bboxes(bbox_details=post_processed_matches, image_url=image_url, \
