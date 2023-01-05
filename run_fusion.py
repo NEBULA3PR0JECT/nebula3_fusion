@@ -397,7 +397,9 @@ def main():
                                 {
                                     'iou': bboxes_intersection,
                                     'face_id': str(face_id),
-                                    'vc_id': str(vc_roi['roi_id'])
+                                    'vc_id': str(vc_roi['roi_id']),
+                                    'reid_bbox': reid_bbox,
+                                    'vc_bbox': vc_bbox
                                 }
                             )
                         
@@ -445,6 +447,8 @@ def main():
                     print("-------- IOUs Frame Number: {} -------".format(str(frame_num)))
                     print("VC_ID: {}".format(iou_data['vc_id']))
                     print("FACE_ID: {}".format(iou_data['face_id']))
+                    print("VC_BBOX: {}".format(iou_data['vc_bbox']))
+                    print("FACE_BBOX: {}".format(iou_data['reid_bbox']))
                     print("IOU: {}".format(iou_data['iou']))
                     print("-"*20)
                 # Draw all the matches on the current frame
