@@ -296,19 +296,17 @@ def main():
     fusion_pipeline = FusionPipeline()
     tag='v100'
     collection='pipelines'
-    # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag, collection)
+    movie_ids_v100 = fusion_pipeline.get_movie_ids_by_tag(tag, collection)
 
-    # movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
-    #             "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
-    #             "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
-    #             "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073"]
-
-    # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag='v100', collection='pipelines')
-
-    # Trailers:
-    movie_ids = ["Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
+    movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
+                "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
+                "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
+                "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073",
+                "Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
                 "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
                 "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
+
+    # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag='v100', collection='pipelines')
 
     # List of faces without person bboxes attached to them (Only REID)
     face_ids = set()
@@ -316,14 +314,34 @@ def main():
     vc_ids = set()
 
     # Trailers:
-    movie_ids = ["Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
-                "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
-                "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
+    # movie_ids = ["Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
+    #             "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
+    #             "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
 
+    movie_ids.extend(movie_ids_v100)
+
+    # Skipped movie ids: ['Movies/5752769488301225156', 'Movies/-1139376984033198382', 'Movies/4848828407966745777', 'Movies/-4810210150839501382', 'Movies/-1128454230096014741', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/-4612871700699153470']
     # movie_ids = ["Movies/5421091196518235613"]
 
-    skipped_movie_ids = []
+    working_movie_ids = []
+
     for movie_id in movie_ids:
+        collection = "s4_re_id"
+        reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
+        if reid_detections:
+            is_valid = True
+            for reid_detection in reid_detections:
+                reid_frame = reid_detection['frame_num']
+                collection="s4_visual_clues"
+                vc_data = fusion_pipeline.get_visual_clues_data(movie_id = movie_id, collection=collection, frame_num=reid_frame)
+                if not vc_data:
+                    is_valid = False
+            if is_valid:
+                working_movie_ids.append(movie_id)
+    
+    print("Going over {} movies.".format(len(working_movie_ids)))
+
+    for movie_id in working_movie_ids:
         print("Working on Movie ID: {}".format(movie_id))
         collection = "s4_re_id"
         reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
@@ -348,15 +366,7 @@ def main():
 
             reid_frame = reid_detection['frame_num']
             vc_data = fusion_pipeline.get_visual_clues_data(movie_id = movie_id, collection=collection, frame_num=reid_frame)
-            if not vc_data:
-                 print("Skipping Movie ID: {}, Because vc_data was not found".format(movie_id))
-                 skipped_movie_ids.append(movie_id)
-                 continue
             vc_rois = fusion_pipeline.get_visual_clues_rois(visual_clue_data=vc_data)
-            if not vc_rois:
-                print("Skipping Movie ID: {}, Because vc_rois was not found".format(movie_id))
-                skipped_movie_ids.append(movie_id)
-                continue
                 
             reid_bboxes = reid_detection['re-id']
             # Iterate over the RE-ID face(s) in the current frame (There may be multiple different Face IDs)
@@ -441,25 +451,28 @@ def main():
                             face_ids.remove(face_id)
                         if vc_id in vc_ids:
                             vc_ids.remove(vc_id)
-                        
 
-                for iou_data in frames[str(frame_num)]['ious']:
-                    print("-------- IOUs Frame Number: {} -------".format(str(frame_num)))
-                    print("VC_ID: {}".format(iou_data['vc_id']))
-                    print("FACE_ID: {}".format(iou_data['face_id']))
-                    print("VC_BBOX: {}".format(iou_data['vc_bbox']))
-                    print("FACE_BBOX: {}".format(iou_data['reid_bbox']))
-                    print("IOU: {}".format(iou_data['iou']))
-                    print("-"*20)
                 # Draw all the matches on the current frame
 
                 #faces_no_person.append({'roi_id': vc_roi['roi_id']})
                 #person_no_faces.append(v)
-                if post_processed_matches:
+                if len(post_processed_matches) > 1:
                     
                     save_img_with_bboxes(bbox_details=post_processed_matches, image_url=image_url, \
                                     frame_num=frame_num, movie_name=movie_name)
-    print("Skipped movie ids: {}".format(skipped_movie_ids))
+                
+                    movie_name_path =  os.path.join(CUR_FOLDER, "images/{}".format(movie_name))
+                    cur_frame_path = os.path.join(movie_name_path, "frame_{}.txt".format(frame_num))
+                    with open(cur_frame_path, 'w+') as f:
+                        for iou_data in frames[str(frame_num)]['ious']:
+                            f.write("-------- IOUs Frame Number: {} -------\n".format(str(frame_num)))
+                            f.write("VC_ID: {}\n".format(iou_data['vc_id']))
+                            f.write("FACE_ID: {}\n".format(iou_data['face_id']))
+                            f.write("VC_BBOX: {}\n".format(iou_data['vc_bbox']))
+                            f.write("FACE_BBOX: {}\n".format(iou_data['reid_bbox']))
+                            f.write("IOU: {}\n".format(iou_data['iou']))
+                            print("-"*20+"\n")
+    # print("Skipped movie ids: {}".format(skipped_movie_ids))
 
 
 if __name__ == '__main__':
