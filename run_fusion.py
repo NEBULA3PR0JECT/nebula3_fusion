@@ -28,6 +28,9 @@ class FusionPipeline:
         self.collection_name = "s4_fusion"
 
 
+    def run_fusion_pipeline(self, movie_id):
+        return
+
     def insert_json_to_db(self, json_obj, collection_name, key_list=[]):
         """
         Inserts a JSON with global & local tokens to the database.
@@ -307,11 +310,6 @@ def main():
     #             "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
 
     # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag='v100', collection='pipelines')
-
-    # List of faces without person bboxes attached to them (Only REID)
-    face_ids = set()
-    # List of person without faces attached to them (Only Visual Clues)
-    vc_ids = set()
 
     # Trailers:
     # movie_ids = ["Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
