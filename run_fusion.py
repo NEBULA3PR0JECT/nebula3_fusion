@@ -28,14 +28,14 @@ class FusionPipeline:
         self.collection_name = "s4_fusion"
 
 
-    def insert_json_to_db(self, json_obj, collection_name):
+    def insert_json_to_db(self, json_obj, collection_name, key_list=[]):
         """
         Inserts a JSON with global & local tokens to the database.
         """
 
-        res = self.nre.write_doc_by_key(json_obj, collection_name, overwrite=True, key_list=['movie_id'])
+        res = self.nre.write_doc_by_key(json_obj, collection_name, overwrite=True, key_list=key_list)
 
-        print("Successfully inserted to database. Collection name: {}, movie_id: {}".format(collection_name, json_obj['movie_id']))
+        print("Successfully inserted to database. Collection name: {}".format(collection_name))
         return res
 
     def get_mdf_urls_from_db(self, movie_id, collection):
@@ -102,12 +102,12 @@ class FusionPipeline:
         Get the bboxes that have 'person' detected in them.
         """
         reid_data = self.get_reid_detections(movie_id, collection)
-        face_ids = set()
+        face_ids = []
         for reid_det in reid_data:
             if str(reid_det['frame_num']) == str(frame_num):
                 reid_bboxes = reid_det['re-id']
                 for reid_bbox in reid_bboxes:
-                    face_ids.add(str(reid_bbox['id']))
+                    face_ids.append(str(reid_bbox['id']))
         return face_ids
     
     def get_visual_clues_data(self, movie_id, collection, frame_num):
@@ -134,11 +134,11 @@ class FusionPipeline:
         Get the bboxes that have 'person' detected in them.
         """
         visual_clue_data = self.get_visual_clues_data(movie_id, collection, frame_num)
-        vc_ids = set()
+        vc_ids = []
         vc_ids_data = visual_clue_data['roi']
         for vc_roi in vc_ids_data:
             if 'person' in vc_roi['bbox_object']:
-                vc_ids.add(vc_roi['roi_id'])
+                vc_ids.append(vc_roi['roi_id'])
         return vc_ids
     
     
@@ -296,15 +296,15 @@ def main():
     fusion_pipeline = FusionPipeline()
     tag='v100'
     collection='pipelines'
-    movie_ids_v100 = fusion_pipeline.get_movie_ids_by_tag(tag, collection)
+    # movie_ids_v100 = fusion_pipeline.get_movie_ids_by_tag(tag, collection)
 
-    movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
-                "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
-                "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
-                "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073",
-                "Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
-                "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
-                "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
+    # movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341",
+    #             "Movies/-1202209992462902069", "Movies/1946038493973736863", "Movies/-7609741451718247625",
+    #             "Movies/-638061510228445424", "Movies/-5177664853933870762", "Movies/6959368340271409763",
+    #             "Movies/5279939171034674409", "Movies/-7247731179043334982", "Movies/-6432245914174803073",
+    #             "Movies/1921717892733313742", "Movies/-7355878014542434114", "Movies/-1932219743953950323",
+    #             "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
+    #             "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
 
     # movie_ids = fusion_pipeline.get_movie_ids_by_tag(tag='v100', collection='pipelines')
 
@@ -318,30 +318,34 @@ def main():
     #             "Movies/5718056395198158653", "Movies/5421091196518235613", "Movies/9190480897184314431",
     #             "Movies/5752769488301225156", "Movies/-8052325165495258532", "Movies/2919871177174099132"]
 
-    movie_ids.extend(movie_ids_v100)
+    # movie_ids.extend(movie_ids_v100)
 
     # Skipped movie ids: ['Movies/5752769488301225156', 'Movies/-1139376984033198382', 'Movies/4848828407966745777', 'Movies/-4810210150839501382', 'Movies/-1128454230096014741', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/-4612871700699153470']
     # movie_ids = ["Movies/5421091196518235613"]
 
-    working_movie_ids = []
+    movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341"]
+    working_movie_ids = movie_ids
 
-    for movie_id in movie_ids:
-        collection = "s4_re_id"
-        reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
-        if reid_detections:
-            is_valid = True
-            for reid_detection in reid_detections:
-                reid_frame = reid_detection['frame_num']
-                collection="s4_visual_clues"
-                vc_data = fusion_pipeline.get_visual_clues_data(movie_id = movie_id, collection=collection, frame_num=reid_frame)
-                if not vc_data:
-                    is_valid = False
-            if is_valid:
-                working_movie_ids.append(movie_id)
+    # for movie_id in movie_ids:
+    #     collection = "s4_re_id"
+    #     reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
+    #     if reid_detections:
+    #         is_valid = True
+    #         for reid_detection in reid_detections:
+    #             reid_frame = reid_detection['frame_num']
+    #             collection="s4_visual_clues"
+    #             vc_data = fusion_pipeline.get_visual_clues_data(movie_id = movie_id, collection=collection, frame_num=reid_frame)
+    #             if not vc_data:
+    #                 is_valid = False
+    #         if is_valid:
+    #             working_movie_ids.append(movie_id)
     
     print("Going over {} movies.".format(len(working_movie_ids)))
 
+    gt_data_for_db = { 'movie_ids':  [] }
+
     for movie_id in working_movie_ids:
+
         print("Working on Movie ID: {}".format(movie_id))
         collection = "s4_re_id"
         reid_detections = fusion_pipeline.get_reid_detections(movie_id = movie_id, collection=collection)
@@ -354,6 +358,11 @@ def main():
         fusion_output = {
             'movie_id': movie_id,
             'frame_numbers': {}
+        }
+        
+        data_for_db = {
+            'movie_id': movie_id,
+            'frames': {}
         }
 
         # Iterate over all the RE-ID frames.
@@ -443,6 +452,7 @@ def main():
 
                 vc_ids = fusion_pipeline.get_visual_clues_person_ids(movie_id, int(frame_num), collection="s4_visual_clues")
                 face_ids = fusion_pipeline.get_reid_face_ids(movie_id, frame_num, collection="s4_re_id")
+                matched_ids = []
                 for idx, post_processed_match in enumerate(post_processed_matches):
                         face_id = str(post_processed_match['face_id'])
                         vc_id = str(post_processed_match['vc_id'])
@@ -452,8 +462,21 @@ def main():
                         if vc_id in vc_ids:
                             vc_ids.remove(vc_id)
 
-                # Draw all the matches on the current frame
+                        matched_ids.append((face_id, vc_id))
 
+                data_for_db['frames'] = {'rois': [], 'faces_no_person': vc_ids, 'person_no_faces': face_ids}
+                for idx in range(len(matched_ids)):
+                    face_id = matched_ids[idx][0]
+                    vc_id = matched_ids[idx][1]
+                    data_for_db['frames']['rois'].append(
+                        {
+                            'face_id': face_id,
+                            'vc_id': vc_id,
+                            'reid_name': ''
+                        }
+                    )  
+                
+                # Draw all the matches on the current frame
                 #faces_no_person.append({'roi_id': vc_roi['roi_id']})
                 #person_no_faces.append(v)
                 if len(post_processed_matches) > 1:
@@ -472,8 +495,13 @@ def main():
                             f.write("FACE_BBOX: {}\n".format(iou_data['reid_bbox']))
                             f.write("IOU: {}\n".format(iou_data['iou']))
                             print("-"*20+"\n")
+            
+            
+        gt_data_for_db['movie_ids'].append(data_for_db)
+        fusion_pipeline.insert_json_to_db(data_for_db, collection_name="s4_fusion", key_list=['movie_id'])
     # print("Skipped movie ids: {}".format(skipped_movie_ids))
-
+        
+    fusion_pipeline.insert_json_to_db(gt_data_for_db, collection_name="s4_fusion_groundtruth")
 
 if __name__ == '__main__':
     main()
