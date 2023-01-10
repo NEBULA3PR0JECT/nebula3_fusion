@@ -20,16 +20,26 @@ from utils.image_utils import bb_intersection_over_union, bb_intersection, \
 URL_PREFIX = "http://74.82.29.209:9000"
 CUR_FOLDER = os.path.dirname(os.path.abspath(__file__))
 INTERSECTION_THRESHOLD = 0.97
+CELEBRITY_PATH = os.path.join(os.path.join(CUR_FOLDER, "data"), "list_of_celebrities.txt")
 
 class FusionPipeline:
     def __init__(self):
         self.nre = DBBase()
         print("Connected to database: {}".format(self.nre.database))
         self.collection_name = "s4_fusion"
+        self.celebrity_data = self.get_celebrity_data()
 
 
     def run_fusion_pipeline(self, movie_id):
         return
+
+    def get_celebrity_data(self):
+        celebrity_dict = {}
+        with open(CELEBRITY_PATH, 'r') as f:
+            celebrity_dict = {str(idx): line.rstrip('\n') for idx, line in enumerate(f)}
+
+        return celebrity_dict
+
 
     def insert_json_to_db(self, json_obj, collection_name, key_list=[]):
         """
@@ -358,10 +368,7 @@ def main():
             'frame_numbers': {}
         }
         
-        data_for_db = {
-            'movie_id': movie_id,
-            'frames': {}
-        }
+        data_for_db = { }
 
         # Iterate over all the RE-ID frames.
         for reid_detection in reid_detections:
@@ -461,19 +468,26 @@ def main():
                             vc_ids.remove(vc_id)
 
                         matched_ids.append((face_id, vc_id))
-
-                data_for_db['frames'] = {'rois': [], 'faces_no_person': vc_ids, 'person_no_faces': face_ids}
+                unmatched_face_ids = face_ids
+                unmatched_vc_ids = vc_ids
+                data_for_db = {"movie_id": movie_id, "frame_num": str(frame_num), 'rois': [], 'face_ids_not_matched': unmatched_face_ids}
                 for idx in range(len(matched_ids)):
                     face_id = matched_ids[idx][0]
                     vc_id = matched_ids[idx][1]
-                    data_for_db['frames']['rois'].append(
+                    data_for_db['rois'].append(
                         {
                             'face_id': face_id,
                             'vc_id': vc_id,
-                            'reid_name': ''
+                            'reid_name': fusion_pipeline.celebrity_data[str(face_id)]
                         }
                     )  
-                
+                for vc_id in unmatched_vc_ids:
+                    data_for_db['rois'].append(
+                        {
+                            'face_id': "-1",
+                            'vc_id': vc_id
+                        }
+                    )  
                 # Draw all the matches on the current frame
                 #faces_no_person.append({'roi_id': vc_roi['roi_id']})
                 #person_no_faces.append(v)
@@ -495,8 +509,8 @@ def main():
                             print("-"*20+"\n")
             
             
-        gt_data_for_db['movie_ids'].append(data_for_db)
-        fusion_pipeline.insert_json_to_db(data_for_db, collection_name="s4_fusion", key_list=['movie_id'])
+                gt_data_for_db['movie_ids'].append(data_for_db)
+                fusion_pipeline.insert_json_to_db(data_for_db, collection_name="s4_fusion", key_list=['movie_id', 'frame_num'])
     # print("Skipped movie ids: {}".format(skipped_movie_ids))
         
     fusion_pipeline.insert_json_to_db(gt_data_for_db, collection_name="s4_fusion_groundtruth")
