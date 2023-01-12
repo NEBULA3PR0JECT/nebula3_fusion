@@ -428,7 +428,7 @@ class FusionPipeline:
 def main():
     
     fusion_pipeline = FusionPipeline()
-    fusion_pipeline.run_fusion_pipeline(movie_id="Movies/7023181708619934815")
+    # fusion_pipeline.run_fusion_pipeline(movie_id="Movies/7023181708619934815")
     tag='v100'
     collection='pipelines'
     # movie_ids_v100 = fusion_pipeline.get_movie_ids_by_tag(tag, collection)
@@ -452,8 +452,27 @@ def main():
 
     # Skipped movie ids: ['Movies/5752769488301225156', 'Movies/-1139376984033198382', 'Movies/4848828407966745777', 'Movies/-4810210150839501382', 'Movies/-1128454230096014741', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/864579853591504579', 'Movies/-4612871700699153470']
     # movie_ids = ["Movies/5421091196518235613"]
+    # Skipped GT: Movies/-8115504787981573966
+    # GROUND-TRUTH
+    # Movie names: Movie Names: ['cVsyJvxX48A', 'rUQo8AY7zWE', 'SqGRnlXplx0', 'zV3gMTOEWt8', 'aVgeJ5eqlSM',
+    #  'k89GF-i_Eyg', 'Q-TQQE1y68c', 'zRwt25M5nGw', 'sQUI04ClZ0M', '4p5286T_kn0', 'Cy6-HnITvzE', 'Z9I4jWLEPzg', '3AQ7yC5jQ28',
+    #  '-hwDNL0pQ8o', 'QHAh5q10mEI', 'SjWU5Ygz-1M', 'ItIM_cjBMy4', '4zy8f7z3_sk', 'VMGw6ZziC2c', 'rRbXJyNMol8', 'IypndIAmCAw',
+    #  'Qy6cAyHXrE4', '7y326_OIgWg', 'yu24PZIbkoY', '84sKjWyMFoE', '4zn1EWGMAPo', '9lrmxkF-UKM', 'RBknYdEECsw', '0Gg2VKb0G44', 
+    # 'eFYUX9l-m5I', '7d8XdU8cb18', '7-6_Ulo7mdk', 'WpAf_QrxtpA', 'C5JiLhxXMg0', 'gj5ibYSz8C0']
+    movie_ids = ["Movies/8255168031563069011", "Movies/-1288418106156936371", "Movies/-6243701145332755148",
+                "Movies/-3820041810510459817", "Movies/3012826751593815648", "Movies/-9118009525364344382",
+                "Movies/6852262443097619963", "Movies/7863417244491922298", "Movies/4770358211541757831",
+                "Movies/3133979166175516759", "Movies/8082941605040447954", "Movies/-8167543770381909043",
+                "Movies/3469592359629353233", "Movies/-6372550222147686303",
+                "Movies/5606615319176612294", "Movies/5731911489174644372", "Movies/-6370193574008768244",
+                "Movies/2117493800139654199", "Movies/-2734135822099376464", "Movies/-942907123698144769",
+                "Movies/9186304234852771337", "Movies/7836023047740295818", "Movies/7598336951580759088",
+                "Movies/-8937629123175469747", "Movies/1796721237688568056", "Movies/1255156974326541698",
+                "Movies/-5512848501298475793", "Movies/8014884421320648871", "Movies/5204459053451023624",
+                "Movies/7117974296585212920", "Movies/7977250433350916424", "Movies/3610791081713986036",
+                "Movies/-3811435832748038446", "Movies/-3953870130562097244", "Movies/-7524665566077882196",
+                "Movies/2919871177174099132", "Movies/-8052325165495258532"]
 
-    movie_ids = ["Movies/7023181708619934815", "Movies/-3873382000557298376", "Movies/5045288714704237341"]
     working_movie_ids = movie_ids
 
     # for movie_id in movie_ids:
@@ -468,12 +487,16 @@ def main():
     #             if not vc_data:
     #                 is_valid = False
     #         if is_valid:
+    #             print("Valid movie_id: {}".format(movie_id))
     #             working_movie_ids.append(movie_id)
+    #         else:
+    #             print("Invalid movie_id: {}".format(movie_id))
     
     print("Going over {} movies.".format(len(working_movie_ids)))
 
     gt_data_for_db = { 'movie_ids':  [] }
-
+    skipped_movie_ids = []
+    movie_names = []
     for movie_id in working_movie_ids:
 
         print("Working on Movie ID: {}".format(movie_id))
@@ -562,6 +585,8 @@ def main():
                 image_url = fusion_pipeline.get_image_url(movie_id, frame_num=int(frame_num), collection="s4_visual_clues")
                 movie_name = image_url.split("/")[-2]
                 print("Working on movie: {}, frame: {}".format(movie_name, frame_num))
+                if movie_name not in movie_names:
+                    movie_names.append(movie_name)
 
                 matches = []
                 # Get all the matches for the current frame
@@ -613,7 +638,7 @@ def main():
                 # Draw all the matches on the current frame
                 #faces_no_person.append({'roi_id': vc_roi['roi_id']})
                 #person_no_faces.append(v)
-                if len(post_processed_matches) > 1:
+                if post_processed_matches:
                     
                     save_img_with_bboxes(bbox_details=post_processed_matches, image_url=image_url, \
                                     frame_num=frame_num, movie_name=movie_name)
@@ -633,9 +658,10 @@ def main():
             
                 gt_data_for_db['movie_ids'].append(data_for_db)
                 fusion_pipeline.insert_json_to_db(data_for_db, collection_name="s4_fusion", key_list=['movie_id', 'frame_num'])
-    # print("Skipped movie ids: {}".format(skipped_movie_ids))
+    print("Skipped movie ids: {}".format(skipped_movie_ids))
         
     fusion_pipeline.insert_json_to_db(gt_data_for_db, collection_name="s4_fusion_groundtruth")
+    print("Movie Names: {}".format(movie_names))
 
 if __name__ == '__main__':
     main()
