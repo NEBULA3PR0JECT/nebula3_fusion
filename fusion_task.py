@@ -141,21 +141,21 @@ class FusionPipeline:
                     matched_ids.append((face_id, vc_id))
             unmatched_face_ids = face_ids
             unmatched_vc_ids = vc_ids
-            data_for_db = {"movie_id": movie_id, "frame_num": str(frame_num), 'rois': [], 'face_ids_not_matched': unmatched_face_ids}
+            data_for_db = {"movie_id": movie_id, "frame_num": int(frame_num), 'rois': [], 'face_ids_not_matched': unmatched_face_ids}
             for idx in range(len(matched_ids)):
                 face_id = matched_ids[idx][0]
                 vc_id = matched_ids[idx][1]
                 data_for_db['rois'].append(
                     {
-                        'face_id': face_id,
-                        'vc_id': vc_id,
+                        'face_id': int(face_id),
+                        'vc_id': int(vc_id),
                         'reid_name': self.celebrity_data[str(face_id)]
                     }
                 )  
             for vc_id in unmatched_vc_ids:
                 data_for_db['rois'].append(
                     {
-                        'face_id': "-1",
+                        'face_id': -1,
                         'vc_id': vc_id
                     }
                 )  
