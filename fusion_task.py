@@ -128,6 +128,7 @@ class FusionPipeline:
 
             vc_ids = self.get_visual_clues_person_ids(movie_id, int(frame_num), collection="s4_visual_clues")
             face_ids = self.get_reid_face_ids(movie_id, frame_num, collection="s4_re_id")
+            face_ids_to_actor_names = self.get_reid_face_ids_with_actor_names(movie_id, frame_num, collection="s4_re_id")
             matched_ids = []
             for idx, post_processed_match in enumerate(post_processed_matches):
                     face_id = str(post_processed_match['face_id'])
@@ -149,7 +150,7 @@ class FusionPipeline:
                     {
                         'face_id': int(face_id),
                         'vc_id': int(vc_id),
-                        'reid_name': self.celebrity_data[str(face_id)]
+                        'reid_name': face_ids_to_actor_names[int(face_id)]
                     }
                 )  
             for vc_id in unmatched_vc_ids:
@@ -243,6 +244,21 @@ class FusionPipeline:
                 for reid_bbox in reid_bboxes:
                     face_ids.append(str(reid_bbox['id']))
         return face_ids
+    
+    def get_reid_face_ids_with_actor_names(self, movie_id, frame_num, collection):
+        """
+        Get the bboxes that have 'person' detected in them.
+        """
+        reid_data = self.get_reid_detections(movie_id, collection)
+        face_ids_to_actor_name = dict()
+        for reid_det in reid_data:
+            if str(reid_det['frame_num']) == str(frame_num):
+                reid_bboxes = reid_det['re-id']
+                for reid_bbox in reid_bboxes:
+                    actor_name = reid_bbox['actor_name']
+                    face_ids_to_actor_name[int(reid_bbox['id'])] = actor_name
+
+        return face_ids_to_actor_name
     
     def get_visual_clues_data(self, movie_id, collection, frame_num):
         try:
@@ -604,6 +620,7 @@ def main():
 
                 vc_ids = fusion_pipeline.get_visual_clues_person_ids(movie_id, int(frame_num), collection="s4_visual_clues")
                 face_ids = fusion_pipeline.get_reid_face_ids(movie_id, frame_num, collection="s4_re_id")
+                face_ids_to_actor_names = fusion_pipeline.get_reid_face_ids_with_actor_names(movie_id, frame_num, collection="s4_re_id")
                 matched_ids = []
                 for idx, post_processed_match in enumerate(post_processed_matches):
                         face_id = str(post_processed_match['face_id'])
@@ -625,7 +642,7 @@ def main():
                         {
                             'face_id': face_id,
                             'vc_id': vc_id,
-                            'reid_name': fusion_pipeline.celebrity_data[str(face_id)]
+                            'reid_name': face_ids_to_actor_names[int(face_id)]
                         }
                     )  
                 for vc_id in unmatched_vc_ids:

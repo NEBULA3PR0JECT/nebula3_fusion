@@ -26,7 +26,7 @@ def test_pipeline_task(pipeline_id):
 
 def test():
     pipeline_id = os.environ.get('PIPELINE_ID')
-    # pipeline_id = "a55117e0-247c-4e1d-ba5f-80efe69746c1" 
+    # pipeline_id = "dff9a316-4296-45b1-a503-359bb8457bba" 
     # print(pipeline_id)
     # pipeline_id='12345678'
     test_pipeline_task(pipeline_id)
