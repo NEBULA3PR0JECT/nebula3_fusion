@@ -2,7 +2,7 @@ from experts.pipeline.api import PipelineApi, PipelineTask
 import sys
 import os
 sys.path.append(os.path.dirname(__file__))
-from nebula3_fusion.fusion_task import FusionPipeline
+from fusion_task import FusionPipeline
 from typing import Tuple
 
 def test_pipeline_task(pipeline_id):
