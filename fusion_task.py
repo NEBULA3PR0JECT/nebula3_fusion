@@ -10,7 +10,7 @@ import time
 import random
 import os, sys
 import ast
-from nebula3_fusion.utils.image_utils import bb_intersection_over_union, bb_intersection, \
+from utils.image_utils import bb_intersection_over_union, bb_intersection, \
                                 bb_smallest_area, plot_one_box, save_img_with_bboxes, \
                                     bb_hueristic_face_coordinate, bb_center_coordinate, \
                                         distance_between_two_points
