@@ -1,4 +1,6 @@
 from experts.pipeline.api import PipelineApi, PipelineTask
+import sys
+sys.path.append(os.path.dirname(__file__))
 from nebula3_fusion.fusion_task import FusionPipeline
 import os
 from typing import Tuple
