@@ -10,7 +10,7 @@ import time
 import random
 import os, sys
 import ast
-from utils.image_utils import bb_intersection_over_union, bb_intersection, \
+from nebula3_fusion.utils.image_utils import bb_intersection_over_union, bb_intersection, \
                                 bb_smallest_area, plot_one_box, save_img_with_bboxes, \
                                     bb_hueristic_face_coordinate, bb_center_coordinate, \
                                         distance_between_two_points
@@ -60,6 +60,14 @@ class FusionPipeline:
             vc_rois = self.get_visual_clues_rois(visual_clue_data=vc_data)
                 
             reid_bboxes = reid_detection['re-id']
+            if not reid_bboxes: # We have no RE-ID face(s), so no fusion is available.
+                data_for_db = {"movie_id": movie_id, "frame_num": 0, 'rois': [], 'face_ids_not_matched': []}
+                self.insert_json_to_db(data_for_db, collection_name="s4_fusion", key_list=['movie_id', 'frame_num'])
+                end_time = time.time() - start_time
+                print("Fusion didn't fuse any faces because RE-ID didn't find any! Appending empty document.")
+                print("Total time it took for fusion task: {}".format(end_time))
+                return True, None
+
             # Iterate over the RE-ID face(s) in the current frame (There may be multiple different Face IDs)
             for reid_bbox_obj in reid_bboxes:
                 face_id = reid_bbox_obj['id']
@@ -237,6 +245,8 @@ class FusionPipeline:
         Get the bboxes that have 'person' detected in them.
         """
         reid_data = self.get_reid_detections(movie_id, collection)
+        if not reid_data:
+            return None
         face_ids = []
         for reid_det in reid_data:
             if str(reid_det['frame_num']) == str(frame_num):

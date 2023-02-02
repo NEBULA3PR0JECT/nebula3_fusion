@@ -1,5 +1,5 @@
 from experts.pipeline.api import PipelineApi, PipelineTask
-from fusion_task import FusionPipeline
+from nebula3_fusion.fusion_task import FusionPipeline
 import os
 from typing import Tuple
 
